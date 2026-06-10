@@ -86,6 +86,8 @@ type Tab =
   | "command"
   | "prompts";
 
+type AIOutputSource = "openai" | "built-in" | null;
+
 const STORAGE_KEY = "researchgtm-command-center-v1";
 const fieldClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10";
@@ -251,6 +253,39 @@ function EmptyState({ text }: { text: string }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-muted">
       {text}
+    </div>
+  );
+}
+
+function AIOutputStatus({ source }: { source: AIOutputSource }) {
+  if (!source) return null;
+
+  const isOpenAI = source === "openai";
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 text-xs leading-5 ${
+        isOpenAI
+          ? "border-brand-100 bg-brand-50 text-brand-800"
+          : "border-slate-200 bg-slate-50 text-slate-600"
+      }`}
+    >
+      <div
+        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${
+          isOpenAI ? "bg-brand-100 text-brand-700" : "bg-white text-slate-500"
+        }`}
+      >
+        {isOpenAI ? <Sparkles size={13} /> : <Database size={13} />}
+      </div>
+      <div>
+        <p className="font-bold text-ink">
+          {isOpenAI ? "Generated with OpenAI" : "Built-in analysis used"}
+        </p>
+        <p className="mt-0.5">
+          {isOpenAI
+            ? "Review the model-generated draft before saving or applying it."
+            : "This locally generated draft is ready to review. Connect OpenAI in deployment settings for model-generated output."}
+        </p>
+      </div>
     </div>
   );
 }
@@ -682,7 +717,7 @@ function Prospects({
   const [analyzerPersona, setAnalyzerPersona] = useState<Persona>("Researcher");
   const [analysis, setAnalysis] = useState<ProspectAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
-  const [aiNote, setAiNote] = useState("");
+  const [aiSource, setAiSource] = useState<AIOutputSource>(null);
 
   const filtered = useMemo(
     () =>
@@ -714,7 +749,7 @@ function Prospects({
   const analyze = async () => {
     if (!rawInput.trim()) return;
     setLoading(true);
-    setAiNote("");
+    setAiSource(null);
     try {
       const result = await callAI({
         workflow: "prospect",
@@ -723,10 +758,10 @@ function Prospects({
         icp: data.icp,
       });
       setAnalysis(result);
-      setAiNote("OpenAI analysis ready");
-    } catch (error) {
+      setAiSource("openai");
+    } catch {
       setAnalysis(fallbackProspectAnalysis(rawInput, analyzerPersona));
-      setAiNote(`Local fallback used · ${error instanceof Error ? error.message : "AI unavailable"}`);
+      setAiSource("built-in");
     } finally {
       setLoading(false);
     }
@@ -867,7 +902,7 @@ function Prospects({
                     <p className="mt-1 text-sm leading-6 text-slate-600">{value}</p>
                   </div>
                 ))}
-                <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700">{aiNote}</p>
+                <AIOutputStatus source={aiSource} />
                 <Button className="w-full" onClick={saveAnalysis}>
                   <Check size={15} /> Save reviewed prospect
                 </Button>
@@ -1036,13 +1071,13 @@ function Outreach({
   const [notes, setNotes] = useState("");
   const [output, setOutput] = useState<OutreachSequence | null>(null);
   const [loading, setLoading] = useState(false);
-  const [aiNote, setAiNote] = useState("");
+  const [aiSource, setAiSource] = useState<AIOutputSource>(null);
   const prospect = data.prospects.find((item) => item.id === prospectId);
 
   const generate = async () => {
     if (!prospect) return;
     setLoading(true);
-    setAiNote("");
+    setAiSource(null);
     try {
       const result = await callAI({
         workflow: "outreach",
@@ -1061,10 +1096,10 @@ function Outreach({
         createdAt: new Date().toISOString(),
         ...result,
       });
-      setAiNote("OpenAI sequence ready");
-    } catch (error) {
+      setAiSource("openai");
+    } catch {
       setOutput(fallbackOutreach(prospect, tone, goal, notes));
-      setAiNote(`Local fallback used · ${error instanceof Error ? error.message : "AI unavailable"}`);
+      setAiSource("built-in");
     } finally {
       setLoading(false);
     }
@@ -1179,7 +1214,7 @@ function Outreach({
                     />
                   </div>
                 ))}
-                <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700">{aiNote}</p>
+                <AIOutputStatus source={aiSource} />
               </div>
             )}
           </Card>
@@ -1434,18 +1469,19 @@ function ContentEngine({
   const [cta, setCta] = useState("Request early access");
   const [output, setOutput] = useState<ContentIdea | null>(null);
   const [loading, setLoading] = useState(false);
-  const [aiNote, setAiNote] = useState("");
+  const [aiSource, setAiSource] = useState<AIOutputSource>(null);
 
   const generate = async () => {
     setLoading(true);
+    setAiSource(null);
     try {
       const rawInput = JSON.stringify({ persona, researchField, painPoint, format, keyword, cta });
       const result = await callAI({ workflow: "content", rawInput, persona, icp: data.icp });
       setOutput({ id: makeId(), persona, researchField, painPoint, format, targetKeyword: keyword, ...result });
-      setAiNote("OpenAI content plan ready");
-    } catch (error) {
+      setAiSource("openai");
+    } catch {
       setOutput(fallbackContent(persona, researchField, painPoint, format, keyword, cta));
-      setAiNote(`Local fallback used · ${error instanceof Error ? error.message : "AI unavailable"}`);
+      setAiSource("built-in");
     } finally {
       setLoading(false);
     }
@@ -1502,7 +1538,7 @@ function ContentEngine({
                 <div className="rounded-xl bg-orange-50 p-4 text-xs leading-5 text-orange-800"><strong>Credibility warning:</strong> {output.credibilityWarning}</div>
                 <div className="rounded-xl bg-brand-50 p-4 text-xs leading-5 text-brand-800"><strong>Metric to track:</strong> {output.suggestedMetric}</div>
               </div>
-              <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700">{aiNote}</p>
+              <AIOutputStatus source={aiSource} />
             </div>
           )}
         </Card>
@@ -1531,7 +1567,7 @@ function CommandCenter({
   const [rawInput, setRawInput] = useState("");
   const [output, setOutput] = useState<CommandOutput | null>(null);
   const [loading, setLoading] = useState(false);
-  const [aiNote, setAiNote] = useState("");
+  const [aiSource, setAiSource] = useState<AIOutputSource>(null);
   const [health, setHealth] = useState<{ apiRouteWorking?: boolean; openaiConfigured?: boolean; ms?: number; error?: string }>({});
   const checkboxes = ["Update ICP", "Extract prospects", "Create outreach angles", "Generate SEO experiments", "Generate content ideas", "Update pipeline", "Generate recommendations", "Create next-best actions"];
   const [selected, setSelected] = useState(checkboxes);
@@ -1539,13 +1575,14 @@ function CommandCenter({
   const organize = async () => {
     if (!rawInput.trim()) return;
     setLoading(true);
+    setAiSource(null);
     try {
       const result = await callAI({ workflow: "command", rawInput, icp: data.icp, options: { selected } });
       setOutput(result);
-      setAiNote("OpenAI structured plan ready");
-    } catch (error) {
+      setAiSource("openai");
+    } catch {
       setOutput(fallbackCommand(rawInput, data.icp));
-      setAiNote(`Local fallback used · ${error instanceof Error ? error.message : "AI unavailable"}`);
+      setAiSource("built-in");
     } finally {
       setLoading(false);
     }
@@ -1624,7 +1661,7 @@ function CommandCenter({
                 })}
               </div>
               {output.dataQualityWarnings.length > 0 && <div className="rounded-xl bg-orange-50 p-4 text-xs leading-5 text-orange-800"><strong>Data quality:</strong> {output.dataQualityWarnings.join(" ")}</div>}
-              <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700">{aiNote}</p>
+              <AIOutputStatus source={aiSource} />
               <Button className="w-full" onClick={() => setToast("Reviewed plan marked ready for execution")}><Check size={15} /> Mark reviewed plan ready</Button>
             </div>
           )}
